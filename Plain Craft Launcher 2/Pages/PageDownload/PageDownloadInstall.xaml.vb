@@ -75,7 +75,7 @@
         End If
 
         '启动 NeoForge 加载
-        If SelectedMinecraftId.StartsWith("1.") Then
+        If SelectedMinecraftId.StartsWith("1.") AndAlso Int(SelectedMinecraftId.Split(".")(1)) > 19 Then
             Dim NeoForgeLoader = New LoaderTask(Of String, List(Of DlNeoForgeVersionEntry))("DlNeoForgeVersion " & SelectedMinecraftId, AddressOf DlNeoForgeVersionMain)
             LoadNeoForge.State = NeoForgeLoader
             NeoForgeLoader.Start(SelectedMinecraftId)
@@ -372,20 +372,24 @@
             LabForge.Foreground = ColorGray1
         End If
         'NeoForge
-        Dim NeoForgeError As String = LoadNeoForgeGetError()
-        CardNeoForge.MainSwap.Visibility = If(NeoForgeError Is Nothing, Visibility.Visible, Visibility.Collapsed)
-        If NeoForgeError IsNot Nothing Then CardNeoForge.IsSwaped = True
-        SetNeoForgeInfoShow(CardNeoForge.IsSwaped)
-        If SelectedNeoForge Is Nothing Then
-            BtnNeoForgeClear.Visibility = Visibility.Collapsed
-            ImgNeoForge.Visibility = Visibility.Collapsed
-            LabNeoForge.Text = If(NeoForgeError, "点击选择")
-            LabNeoForge.Foreground = ColorGray4
+        If Not SelectedMinecraftId.Contains("1.") OrElse Val(SelectedMinecraftId.Split(".")(1)) <= 19 Then
+            CardNeoForge.Visibility = Visibility.Collapsed
         Else
-            BtnNeoForgeClear.Visibility = Visibility.Visible
-            ImgNeoForge.Visibility = Visibility.Visible
-            LabNeoForge.Text = SelectedNeoForge.StdVersion & If(SelectedNeoForge.IsBeta, "-beta", "")
-            LabNeoForge.Foreground = ColorGray1
+            Dim NeoForgeError As String = LoadNeoForgeGetError()
+            CardNeoForge.MainSwap.Visibility = If(NeoForgeError Is Nothing, Visibility.Visible, Visibility.Collapsed)
+            If NeoForgeError IsNot Nothing Then CardNeoForge.IsSwaped = True
+            SetNeoForgeInfoShow(CardNeoForge.IsSwaped)
+            If SelectedNeoForge Is Nothing Then
+                BtnNeoForgeClear.Visibility = Visibility.Collapsed
+                ImgNeoForge.Visibility = Visibility.Collapsed
+                LabNeoForge.Text = If(NeoForgeError, "点击选择")
+                LabNeoForge.Foreground = ColorGray4
+            Else
+                BtnNeoForgeClear.Visibility = Visibility.Visible
+                ImgNeoForge.Visibility = Visibility.Visible
+                LabNeoForge.Text = SelectedNeoForge.VersionCode & If(SelectedNeoForge.IsBeta, "-beta", "")
+                LabNeoForge.Foreground = ColorGray1
+            End If
         End If
         'Fabric
         If SelectedMinecraftId.Contains("1.") AndAlso Val(SelectedMinecraftId.Split(".")(1)) <= 13 Then
@@ -499,7 +503,7 @@
             Name += "-Forge_" & SelectedForge.Version
         End If
         If SelectedNeoForge IsNot Nothing Then
-            Name += "-NeoForge_" & SelectedNeoForge.StdVersion & If(SelectedNeoForge.IsBeta, "-beta", "")
+            Name += "-NeoForge_" & SelectedNeoForge.VersionCode & If(SelectedNeoForge.IsBeta, "-beta", "")
         End If
         If SelectedLiteLoader IsNot Nothing Then
             Name += "-LiteLoader"
@@ -521,7 +525,7 @@
             Info += ", Forge " & SelectedForge.Version
         End If
         If SelectedNeoForge IsNot Nothing Then
-            Info += ", NeoForge " & SelectedNeoForge.StdVersion & If(SelectedNeoForge.IsBeta, "-beta", "")
+            Info += ", NeoForge " & SelectedNeoForge.VersionCode & If(SelectedNeoForge.IsBeta, "-beta", "")
         End If
         If SelectedLiteLoader IsNot Nothing Then
             Info += ", LiteLoader"
@@ -541,7 +545,7 @@
         ElseIf SelectedForge IsNot Nothing Then
             Return "pack://application:,,,/images/Blocks/Anvil.png"
         ElseIf SelectedNeoForge IsNot Nothing Then
-            Return "pack://application:,,,/images/Icons/NeoForged.png"
+            Return "pack://application:,,,/images/Blocks/NeoForge.png"
         ElseIf SelectedLiteLoader IsNot Nothing Then
             Return "pack://application:,,,/images/Blocks/Egg.png"
         ElseIf SelectedOptiFine IsNot Nothing Then
@@ -946,7 +950,6 @@
         End If
         If Loader.State <> LoadState.Finished Then Return "获取版本列表失败：未知错误，状态为 " & GetStringFromEnum(Loader.State)
         For Each Version In Loader.Output
-            If Version.Category = "universal" OrElse Version.Category = "client" Then Continue For '跳过无法自动安装的版本
             If SelectedForge IsNot Nothing Then Return "与 Forge 不兼容"
             If SelectedFabric IsNot Nothing Then Return "与 Fabric 不兼容"
             Return Nothing
@@ -974,11 +977,8 @@
             If Not Loader.Output.Any() Then Exit Sub
             PanNeoForge.Children.Clear()
 
-            Dim VersionsArray As Array = Versions.ToArray()
-            VersionsArray.Reverse(VersionsArray)
-            'Versions = Sort(Versions, Function(a, b) New Version(a.Version) > New Version(b.Version)).ToList
             NeoForgeDownloadListItemPreload(PanNeoForge, Versions, AddressOf NeoForge_Selected, False)
-            For Each Version In VersionsArray
+            For Each Version In Versions
                 PanNeoForge.Children.Add(NeoForgeDownloadListItem(Version, AddressOf NeoForge_Selected, False))
             Next
         Catch ex As Exception
