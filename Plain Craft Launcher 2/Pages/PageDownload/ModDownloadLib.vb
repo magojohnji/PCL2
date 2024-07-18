@@ -169,6 +169,69 @@ Public Module ModDownloadLib
         Return Loaders
 
     End Function
+
+    Public Function McDownloadServer(Behaviour As NetPreDownloadBehaviour, Id As String, OutputPath As String, Optional JsonUrl As String = Nothing) As LoaderCombo(Of String)
+        Try
+            '重复任务检查
+            SyncLock LoaderTaskbarLock
+                For i = 0 To LoaderTaskbar.Count - 1
+                    If LoaderTaskbar(i).Name = "Minecraft " & Id & " 服务端下载" Then
+                        If Behaviour = NetPreDownloadBehaviour.ExitWhileExistsOrDownloading Then Return LoaderTaskbar(i)
+                        Hint("该版本正在下载中！", HintType.Critical)
+                        Return LoaderTaskbar(i)
+                    End If
+                Next
+            End SyncLock
+
+            '启动
+            Dim Loader As New LoaderCombo(Of String)("Minecraft " & Id & " 服务端下载", McDownloadServerLoader(Id, JsonUrl)) With {.OnStateChanged = AddressOf McInstallState}
+            Loader.Start(OutputPath)
+            LoaderTaskbarAdd(Loader)
+            FrmMain.BtnExtraDownload.ShowRefresh()
+            FrmMain.BtnExtraDownload.Ribble()
+            Return Loader
+
+        Catch ex As Exception
+            Log(ex, "开始 Minecraft 下载失败", LogLevel.Feedback)
+            Return Nothing
+        End Try
+    End Function
+
+    Private Function McDownloadServerLoader(Id As String, OutputPath As String, Optional JsonUrl As String = Nothing, Optional VersionName As String = Nothing) As List(Of LoaderBase)
+        Dim Loaders As New List(Of LoaderBase)
+
+        '下载版本 Json 文件
+        If JsonUrl Is Nothing Then
+            Loaders.Add(New LoaderTask(Of String, List(Of NetFile))("获取原版 Json 文件下载地址",
+            Sub(Task As LoaderTask(Of String, List(Of NetFile)))
+                Dim JsonAddress As String = DlClientListGet(Id)
+                Task.Output = New List(Of NetFile) From {New NetFile(DlSourceLauncherOrMetaGet(JsonAddress), OutputPath & VersionName & ".json")}
+            End Sub) With {.ProgressWeight = 2, .Show = False})
+        End If
+        Loaders.Add(New LoaderDownload(McDownloadClientJsonName, New List(Of NetFile) From {
+            New NetFile(DlSourceLauncherOrMetaGet(If(JsonUrl, "")), OutputPath & VersionName & ".json", New FileChecker(CanUseExistsFile:=False, IsJson:=True))
+        }) With {.ProgressWeight = 3})
+
+        Dim Result As JObject = GetJson(ReadFile(OutputPath & VersionName & ".json"))
+
+        '检查 Json 是否标准
+        If Result("downloads") Is Nothing OrElse Result("downloads")("server") Is Nothing OrElse Result("downloads")("server")("url") Is Nothing Then
+            Throw New Exception("Json 中无 Jar 文件下载信息")
+        End If
+
+        '检查文件
+        Dim Checker As New FileChecker(MinSize:=1024, ActualSize:=If(Result("downloads")("server")("size"), -1), Hash:=Result("downloads")("server")("sha1"))
+
+        '下载服务端 Jar 文件
+        Dim JarUrl As String = Result("downloads")("client")("url")
+        Loaders.Add(New LoaderTask(Of String, List(Of NetFile))("获取原版服务端 Jar 文件下载地址",
+            Sub(Task As LoaderTask(Of String, List(Of NetFile)))
+                Dim JsonAddress As String = DlClientListGet(Id)
+                Task.Output = New List(Of NetFile) From {New NetFile(DlSourceLauncherOrMetaGet(JarUrl), OutputPath & VersionName & ".jar", Checker)}
+            End Sub) With {.ProgressWeight = 2, .Show = False})
+
+        Return Loaders
+    End Function
     Private Const McDownloadClientLibName As String = "下载原版支持库文件"
     Private Const McDownloadClientJsonName As String = "下载原版 json 文件"
 
@@ -176,7 +239,7 @@ Public Module ModDownloadLib
 
 #Region "Minecraft 下载菜单"
 
-    Public Function McDownloadListItem(Entry As JObject, OnClick As MyListItem.ClickEventHandler, IsSaveOnly As Boolean) As MyListItem
+    Public Function McDownloadListItem(Entry As JObject, OnClick As MyListItem.ClickEventHandler, IsSaveOnly As Boolean, Optional OnSaveClick As MyIconButton.ClickEventHandler = Nothing) As MyListItem
         '确定图标
         Dim Logo As String
         Select Case Entry("type")
@@ -240,6 +303,17 @@ Public Module ModDownloadLib
         McUpdateLogShow(Version)
     End Sub
     Public Sub McDownloadMenuSave(sender As Object, e As RoutedEventArgs)
+        Dim Version As MyListItem
+        If TypeOf sender Is MyListItem Then
+            Version = sender
+        ElseIf TypeOf sender.Parent Is MyListItem Then
+            Version = sender.Parent
+        Else
+            Version = sender.Parent.Parent
+        End If
+        McDownloadClientCore(Version.Title, Version.Tag("url").ToString, NetPreDownloadBehaviour.HintWhileExists)
+    End Sub
+    Public Sub McDownloadMenuSaveServer(sender As Object, e As RoutedEventArgs)
         Dim Version As MyListItem
         If TypeOf sender Is MyListItem Then
             Version = sender
@@ -1451,47 +1525,47 @@ Retry:
             End Sub) With {.ProgressWeight = 10})
         Else
             Log("[Download] 检测为非新版 Forge：" & LoaderVersion)
-                        Loaders.Add(New LoaderTask(Of List(Of NetFile), Boolean)($"安装 {LoaderName}（方式 B）",
-            Sub(Task As LoaderTask(Of List(Of NetFile), Boolean))
-                Dim Installer As ZipArchive = Nothing
-                Try
-                    '解压并获取信息
-                    Installer = New ZipArchive(New FileStream(InstallerAddress, FileMode.Open))
-                    Task.Progress = 0.2
-                    Dim Json As JObject = GetJson(ReadFile(Installer.GetEntry("install_profile.json").Open))
-                    Task.Progress = 0.4
-                    '新建版本文件夹
-                    Directory.CreateDirectory(VersionFolder)
-                    Task.Progress = 0.5
-                    If Json("install") Is Nothing Then
-                        '中版：Legacy 方式 1
-                        Log("[Download] 开始进行 Forge 安装，Legacy 方式 1：" & InstallerAddress)
-                        '建立 Json 文件
-                        Dim JsonVersion As JObject = GetJson(ReadFile(Installer.GetEntry(Json("json").ToString.TrimStart("/")).Open))
-                        JsonVersion("id") = TargetVersion
-                        WriteFile(VersionFolder & TargetVersion & ".json", JsonVersion.ToString)
-                        Task.Progress = 0.6
-                        '解压支持库文件
-                        Installer.Dispose()
-                        ExtractFile(InstallerAddress, InstallerAddress & "_unrar\")
-                        CopyDirectory(InstallerAddress & "_unrar\maven\", McFolder & "libraries\")
-                        DeleteDirectory(InstallerAddress & "_unrar\")
-                    Else
-                        '旧版：Legacy 方式 2
-                        Log("[Download] 开始进行 Forge 安装，Legacy 方式 2：" & InstallerAddress)
-                        '解压 Jar 文件
-                        Dim JarAddress As String = McLibGet(Json("install")("path"), CustomMcFolder:=McFolder)
-                        If File.Exists(JarAddress) Then File.Delete(JarAddress)
-                        WriteFile(JarAddress, Installer.GetEntry(Json("install")("filePath")).Open)
-                        Task.Progress = 0.9
-                        '建立 Json 文件
-                        Json("versionInfo")("id") = TargetVersion
-                        If Json("versionInfo")("inheritsFrom") Is Nothing Then CType(Json("versionInfo"), JObject).Add("inheritsFrom", Inherit)
-                        WriteFile(VersionFolder & TargetVersion & ".json", Json("versionInfo").ToString)
-                    End If
-                    '新建 mods 文件夹
-                    Directory.CreateDirectory(New McVersion(VersionFolder).GetPathIndie(True) & "mods\")
-                Catch ex As Exception
+            Loaders.Add(New LoaderTask(Of List(Of NetFile), Boolean)($"安装 {LoaderName}（方式 B）",
+Sub(Task As LoaderTask(Of List(Of NetFile), Boolean))
+    Dim Installer As ZipArchive = Nothing
+    Try
+        '解压并获取信息
+        Installer = New ZipArchive(New FileStream(InstallerAddress, FileMode.Open))
+        Task.Progress = 0.2
+        Dim Json As JObject = GetJson(ReadFile(Installer.GetEntry("install_profile.json").Open))
+        Task.Progress = 0.4
+        '新建版本文件夹
+        Directory.CreateDirectory(VersionFolder)
+        Task.Progress = 0.5
+        If Json("install") Is Nothing Then
+            '中版：Legacy 方式 1
+            Log("[Download] 开始进行 Forge 安装，Legacy 方式 1：" & InstallerAddress)
+            '建立 Json 文件
+            Dim JsonVersion As JObject = GetJson(ReadFile(Installer.GetEntry(Json("json").ToString.TrimStart("/")).Open))
+            JsonVersion("id") = TargetVersion
+            WriteFile(VersionFolder & TargetVersion & ".json", JsonVersion.ToString)
+            Task.Progress = 0.6
+            '解压支持库文件
+            Installer.Dispose()
+            ExtractFile(InstallerAddress, InstallerAddress & "_unrar\")
+            CopyDirectory(InstallerAddress & "_unrar\maven\", McFolder & "libraries\")
+            DeleteDirectory(InstallerAddress & "_unrar\")
+        Else
+            '旧版：Legacy 方式 2
+            Log("[Download] 开始进行 Forge 安装，Legacy 方式 2：" & InstallerAddress)
+            '解压 Jar 文件
+            Dim JarAddress As String = McLibGet(Json("install")("path"), CustomMcFolder:=McFolder)
+            If File.Exists(JarAddress) Then File.Delete(JarAddress)
+            WriteFile(JarAddress, Installer.GetEntry(Json("install")("filePath")).Open)
+            Task.Progress = 0.9
+            '建立 Json 文件
+            Json("versionInfo")("id") = TargetVersion
+            If Json("versionInfo")("inheritsFrom") Is Nothing Then CType(Json("versionInfo"), JObject).Add("inheritsFrom", Inherit)
+            WriteFile(VersionFolder & TargetVersion & ".json", Json("versionInfo").ToString)
+        End If
+        '新建 mods 文件夹
+        Directory.CreateDirectory(New McVersion(VersionFolder).GetPathIndie(True) & "mods\")
+    Catch ex As Exception
                     Throw New Exception("非新版方式安装 Forge 失败", ex)
                 Finally
                     Try
