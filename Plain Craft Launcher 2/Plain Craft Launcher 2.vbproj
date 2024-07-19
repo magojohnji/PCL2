@@ -488,11 +488,8 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-<<<<<<< HEAD
     <Page Include="Pages\PageDownload\PageDownloadQuilt.xaml">
-=======
     <Page Include="Pages\PageDownload\PageDownloadServer.xaml">
->>>>>>> Pigeon0v0/server
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
