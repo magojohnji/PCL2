@@ -10,7 +10,7 @@
     ''' <summary>
     ''' 勾选事件改变页面。
     ''' </summary>
-    Private Sub PageCheck(sender As MyListItem, e As RouteEventArgs) Handles ItemInstall.Check, ItemClient.Check, ItemOptiFine.Check, ItemForge.Check, ItemNeoForge.Check, ItemLiteLoader.Check, ItemMod.Check, ItemFabric.Check, ItemQuilt.Check, ItemPack.Check, ItemResourcePack.Check
+    Private Sub PageCheck(sender As MyListItem, e As RouteEventArgs) Handles ItemInstall.Check, ItemClient.Check, ItemOptiFine.Check, ItemForge.Check, ItemNeoForge.Check, ItemLiteLoader.Check, ItemMod.Check, ItemFabric.Check, ItemQuilt.Check, ItemPack.Check
         '尚未初始化控件属性时，sender.Tag 为 Nothing，会导致切换到页面 0
         '若使用 IsLoaded，则会导致模拟点击不被执行（模拟点击切换页面时，控件的 IsLoaded 为 False）
         If sender.Tag IsNot Nothing Then PageChange(Val(sender.Tag))
@@ -49,9 +49,6 @@
             Case FormMain.PageSubType.DownloadPack
                 If FrmDownloadPack Is Nothing Then FrmDownloadPack = New PageDownloadPack
                 Return FrmDownloadPack
-            Case FormMain.PageSubType.DownloadResourcePack
-                If FrmDownloadResourcePack Is Nothing Then FrmDownloadResourcePack = New PageDownloadResourcePack
-                Return FrmDownloadResourcePack
             Case Else
                 Throw New Exception("未知的下载子页面种类：" & ID)
         End Select
@@ -122,12 +119,6 @@
                 CompProjectCache.Clear()
                 If FrmDownloadPack IsNot Nothing Then FrmDownloadPack.PageLoaderRestart()
                 ItemPack.Checked = True
-            Case FormMain.PageSubType.DownloadResourcePack
-                PageDownloadResourcePack.Storage = New CompProjectStorage
-                PageDownloadResourcePack.Page = 0
-                CompProjectCache.Clear()
-                If FrmDownloadResourcePack IsNot Nothing Then FrmDownloadResourcePack.PageLoaderRestart()
-                ItemResourcePack.Checked = True
             Case FormMain.PageSubType.DownloadClient
                 DlClientListLoader.Start(IsForceRestart:=True)
                 ItemClient.Checked = True
