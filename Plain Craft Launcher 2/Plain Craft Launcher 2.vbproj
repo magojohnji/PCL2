@@ -486,6 +486,9 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="Pages\PageDownload\PageDownloadQuilt.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="Pages\PageDownload\PageDownloadServer.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
