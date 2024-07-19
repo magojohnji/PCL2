@@ -229,13 +229,10 @@
     <Compile Include="Modules\Minecraft\MyCompItem.xaml.vb">
       <DependentUpon>MyCompItem.xaml</DependentUpon>
     </Compile>
-<<<<<<< HEAD
     <Compile Include="Pages\PageDownload\PageDownloadQuilt.xaml.vb">
       <DependentUpon>PageDownloadQuilt.xaml</DependentUpon>
-=======
     <Compile Include="Pages\PageDownload\PageDownloadServer.xaml.vb">
       <DependentUpon>PageDownloadServer.xaml</DependentUpon>
->>>>>>> Pigeon0v0/server
     </Compile>
     <Compile Include="Pages\PageDownload\PageDownloadResourcePack.xaml.vb">
       <DependentUpon>PageDownloadResourcePack.xaml</DependentUpon>
@@ -944,10 +941,7 @@
     <Resource Include="Images\Heads\MCBBS.png" />
   </ItemGroup>
   <ItemGroup>
-<<<<<<< HEAD
     <Resource Include="Images\Blocks\Quilt.png" />
-=======
->>>>>>> Pigeon0v0/server
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Images\Blocks\NeoForge.png" />
