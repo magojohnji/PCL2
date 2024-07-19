@@ -231,6 +231,7 @@
     </Compile>
     <Compile Include="Pages\PageDownload\PageDownloadQuilt.xaml.vb">
       <DependentUpon>PageDownloadQuilt.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Pages\PageDownload\PageDownloadServer.xaml.vb">
       <DependentUpon>PageDownloadServer.xaml</DependentUpon>
     </Compile>
