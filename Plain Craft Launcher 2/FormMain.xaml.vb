@@ -1121,8 +1121,12 @@ Install:
         OtherTest = 2
         VersionOverall = 0
         VersionSetup = 1
-        VersionMod = 2
-        VersionModDisabled = 3
+        VersionWorld = 2
+        VersionScreenshot = 3
+        VersionMod = 4
+        VersionModDisabled = 5
+        VersionResourcePack = 6
+        VersionShader = 7
         VersionExport = 4
     End Enum
     ''' <summary>
