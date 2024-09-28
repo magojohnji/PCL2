@@ -219,7 +219,7 @@
     '导出设置
     Private Sub BtnSystemSettingExp_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemSettingExp.Click
         Dim encodedExport As Boolean = False
-        Select Case MyMsgBox("是否需要导出账号密码、主题颜色等个人设置？" & vbCrLf &
+        Select Case MyMsgBox("是否需要导出账号密码、主题颜色等个人设置？" & vbCrLf & _
                              "如果确定，则应妥善保存该设置，避免被他人窃取。这部分设置仅对这台电脑有效。",
                  Button1:="否", Button2:="是", Button3:="取消")
             Case 1
@@ -239,8 +239,8 @@
 
     '导入
     Private Sub BtnSystemSettingImp_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemSettingImp.Click
-        If MyMsgBox("导入设置后，现有的设置将会被覆盖，建议先导出现有设置。" & vbCrLf &
-                    "当前设置将会被备份到 PCL 文件夹下的 Setup.ini.old 文件，如有需要可以自行还原。" & vbCrLf &
+        If MyMsgBox("导入设置后，现有的设置将会被覆盖，建议先导出现有设置。" & vbCrLf & _
+                    "当前设置将会被备份到 PCL 文件夹下的 Setup.ini.old 文件，如有需要可以自行还原。" & vbCrLf & _
                     "是否继续？", Button1:="继续", Button2:="取消") = 1 Then
             Dim sourcePath As String = SelectFile("PCL 配置文件(*.ini)|*.ini", "选择配置文件")
             If sourcePath = "" Then Exit Sub
@@ -253,8 +253,8 @@
             End If
         End If
     End Sub
-
 #End Region
+
 
 #Region "导出 / 导入设置"
 
