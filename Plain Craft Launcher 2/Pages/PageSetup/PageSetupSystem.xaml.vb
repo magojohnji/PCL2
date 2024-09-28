@@ -253,17 +253,6 @@
             End If
         End If
     End Sub
-#End Region
-
-
-#Region "导出 / 导入设置"
-
-    Private Sub BtnSystemSettingExp_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemSettingExp.Click
-        Hint("该功能尚在开发中！")
-    End Sub
-    Private Sub BtnSystemSettingImp_Click(sender As Object, e As MouseButtonEventArgs) Handles BtnSystemSettingImp.Click
-        Hint("该功能尚在开发中！")
-    End Sub
 
 #End Region
 
