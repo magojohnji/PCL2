@@ -143,14 +143,6 @@
                         <local:MyButton Grid.Column="0" x:Name="BtnSystemIdentify" MinWidth="140" Text="复制识别码" Padding="13,0" Margin="0,0,20,0" />
                         <local:MyButton Grid.Column="1" x:Name="BtnSystemUnlock" MinWidth="140" Text="输入解锁码" Padding="13,0" Margin="0,0,20,0" />
                     </Grid>
-                    <Grid Height="35" Grid.Row="10" Grid.ColumnSpan="2" Margin="0,5,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
-                            <ColumnDefinition Width="Auto" SharedSizeGroup="Button" />
-                        </Grid.ColumnDefinitions>
-                        <local:MyButton Grid.Column="0" x:Name="BtnSystemSettingExp" MinWidth="140" Text="导出设置" Padding="13,0" Margin="0,0,20,0" />
-                        <local:MyButton Grid.Column="1" x:Name="BtnSystemSettingImp" MinWidth="140" Text="导入设置" Padding="13,0" Margin="0,0,20,0" />
-                    </Grid>
                 </Grid>
             </local:MyCard>
             
