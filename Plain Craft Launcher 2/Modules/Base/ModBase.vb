@@ -1,4 +1,5 @@
-﻿Imports System.IO.Compression
+﻿Imports System.Globalization
+Imports System.IO.Compression
 Imports System.Runtime.CompilerServices
 Imports System.Security.Cryptography
 Imports System.Security.Principal
@@ -11,12 +12,13 @@ Public Module ModBase
 #Region "声明"
 
     '下列版本信息由更新器自动修改
-    Public Const VersionBaseName As String = "2.8.3" '不含分支前缀的显示用版本名
-    Public Const VersionStandardCode As String = "2.8.3." & VersionBranchCode '标准格式的四段式版本号
+    Public Const VersionBaseName As String = "2.8.7" '不含分支前缀的显示用版本名
+    Public Const VersionStandardCode As String = "2.8.7." & VersionBranchCode '标准格式的四段式版本号
+    Public Const CommitHash As String = "" 'Commit Hash，由 GitHub Workflow 自动替换
 #If BETA Then
-    Public Const VersionCode As Integer = 332 'Release
+    Public Const VersionCode As Integer = 336 'Release
 #Else
-    Public Const VersionCode As Integer = 331 'Snapshot
+    Public Const VersionCode As Integer = 337 'Snapshot
 #End If
     '自动生成的版本信息
     Public Const VersionDisplayName As String = VersionBranchName & " " & VersionBaseName
@@ -64,7 +66,7 @@ Public Module ModBase
     ''' </summary>
     Public ApplicationOpenTime As Date = Date.Now
     ''' <summary>
-    ''' 设备唯一标识符。
+    ''' 识别码。
     ''' </summary>
     Public UniqueAddress As String = SecretGetUniqueAddress()
     ''' <summary>
@@ -79,10 +81,6 @@ Public Module ModBase
     ''' 是否使用 GBK 编码。
     ''' </summary>
     Public IsGBKEncoding As Boolean = Encoding.Default.CodePage = 936
-    ''' <summary>
-    ''' 操作系统版本。Win10 为 10.0。
-    ''' </summary>
-    Public OsVersion As Version = Environment.OSVersion.Version
     ''' <summary>
     ''' 系统盘盘符，以 \ 结尾。例如 “C:\”。
     ''' </summary>
@@ -700,7 +698,7 @@ Public Module ModBase
             If Not FileName.Contains(":\") Then FileName = $"{Path}PCL\{FileName}.ini"
             WriteFile(FileName, FileContent.ToString)
         Catch ex As Exception
-            Log(ex, $"写入文件失败（{FileName} -> {Key}:{Value}）")
+            Log(ex, $"写入文件失败（{FileName} → {Key}:{Value}）", LogLevel.Hint)
         End Try
     End Sub
 
@@ -774,10 +772,10 @@ Public Module ModBase
         End Try
     End Sub
     ''' <summary>
-    ''' 读取文件，如果失败则返回空字符串。
+    ''' 读取文件，如果失败则返回空数组。
     ''' </summary>
     ''' <param name="FilePath">文件完整或相对路径。</param>
-    Public Function ReadFile(FilePath As String, Optional Encoding As Encoding = Nothing) As String
+    Public Function ReadFileBytes(FilePath As String, Optional Encoding As Encoding = Nothing) As Byte()
         Try
             '还原文件路径
             If Not FilePath.Contains(":\") Then FilePath = Path & FilePath
@@ -787,15 +785,23 @@ Public Module ModBase
                     ReDim FileBytes(ReadStream.Length - 1)
                     ReadStream.Read(FileBytes, 0, ReadStream.Length)
                 End Using
-                ReadFile = If(Encoding Is Nothing, DecodeBytes(FileBytes), Encoding.GetString(FileBytes))
+                Return FileBytes
             Else
-                Log("[System] 欲读取的文件不存在，已返回空字符串：" & FilePath)
-                Return ""
+                Log("[System] 欲读取的文件不存在，已返回空内容：" & FilePath)
+                Return {}
             End If
         Catch ex As Exception
             Log(ex, "读取文件出错：" & FilePath)
-            Return ""
+            Return {}
         End Try
+    End Function
+    ''' <summary>
+    ''' 读取文件，如果失败则返回空字符串。
+    ''' </summary>
+    ''' <param name="FilePath">文件完整或相对路径。</param>
+    Public Function ReadFile(FilePath As String, Optional Encoding As Encoding = Nothing) As String
+        Dim FileBytes = ReadFileBytes(FilePath)
+        ReadFile = If(Encoding Is Nothing, DecodeBytes(FileBytes), Encoding.GetString(FileBytes))
     End Function
     ''' <summary>
     ''' 读取流中的所有文本。
@@ -822,50 +828,39 @@ Public Module ModBase
     ''' <param name="FilePath">文件完整或相对路径。</param>
     ''' <param name="Text">文件内容。</param>
     ''' <param name="Append">是否将文件内容追加到当前文件，而不是覆盖它。</param>
-    Public Function WriteFile(FilePath As String, Text As String, Optional Append As Boolean = False, Optional Encoding As Encoding = Nothing) As Boolean
-        Try
-            '还原文件路径
-            If Not FilePath.Contains(":\") Then FilePath = Path & FilePath
-            '确保目录存在
-            Directory.CreateDirectory(GetPathFromFullPath(FilePath))
-            '写入文件
-            If File.Exists(FilePath) Then
-                '如果文件存在，刷新目前文件
-                Using writer As New StreamWriter(FilePath, Append, If(Encoding, GetEncoding(FilePath)))
-                    writer.Write(Text)
-                    writer.Flush()
-                    writer.Close()
-                End Using
-            Else
-                '如果文件不存在，则新建并写入
-                File.WriteAllText(FilePath, Text, If(Encoding, New UTF8Encoding(False)))
-            End If
-            Return True
-        Catch ex As Exception
-            Log(ex, "写入文件时出错：" & FilePath)
-            Return False
-        End Try
-    End Function
+    Public Sub WriteFile(FilePath As String, Text As String, Optional Append As Boolean = False, Optional Encoding As Encoding = Nothing)
+        '还原文件路径
+        If Not FilePath.Contains(":\") Then FilePath = Path & FilePath
+        '确保目录存在
+        Directory.CreateDirectory(GetPathFromFullPath(FilePath))
+        '写入文件
+        If File.Exists(FilePath) Then
+            '如果文件存在，刷新目前文件
+            Using writer As New StreamWriter(FilePath, Append, If(Encoding, GetEncoding(ReadFileBytes(FilePath))))
+                writer.Write(Text)
+                writer.Flush()
+                writer.Close()
+            End Using
+        Else
+            '如果文件不存在，则新建并写入
+            File.WriteAllText(FilePath, Text, If(Encoding, New UTF8Encoding(False)))
+        End If
+    End Sub
     ''' <summary>
     ''' 写入文件。
+    ''' 如果 CanThrow 设置为 False，返回是否写入成功。
     ''' </summary>
     ''' <param name="FilePath">文件完整或相对路径。</param>
     ''' <param name="Content">文件内容。</param>
     ''' <param name="Append">是否将文件内容追加到当前文件，而不是覆盖它。</param>
-    Public Function WriteFile(FilePath As String, Content As Byte(), Optional Append As Boolean = False) As Boolean
-        Try
-            '还原文件路径
-            If Not FilePath.Contains(":\") Then FilePath = Path & FilePath
-            '确保目录存在
-            Directory.CreateDirectory(GetPathFromFullPath(FilePath))
-            '写入文件
-            File.WriteAllBytes(FilePath, Content)
-            Return True
-        Catch ex As Exception
-            Log(ex, "写入文件时出错：" & FilePath)
-            Return False
-        End Try
-    End Function
+    Public Sub WriteFile(FilePath As String, Content As Byte(), Optional Append As Boolean = False)
+        '还原文件路径
+        If Not FilePath.Contains(":\") Then FilePath = Path & FilePath
+        '确保目录存在
+        Directory.CreateDirectory(GetPathFromFullPath(FilePath))
+        '写入文件
+        File.WriteAllBytes(FilePath, Content)
+    End Sub
     ''' <summary>
     ''' 将流写入文件。
     ''' </summary>
@@ -895,21 +890,11 @@ Public Module ModBase
 
     '文件编码
     ''' <summary>
-    ''' 获取文件编码。
-    ''' </summary>
-    ''' <param name="FilePath">文件完整或相对路径。</param>
-    Public Function GetEncoding(FilePath As String) As Encoding
-        '还原文件路径
-        If Not FilePath.Contains(":\") Then FilePath = Path & FilePath
-        '获取编码
-        GetEncoding = GetEncoding(File.ReadAllBytes(FilePath))
-    End Function
-    ''' <summary>
-    ''' 获取 Bytes 的编码。
+    ''' 根据字节数组分析其编码。
     ''' </summary>
     Public Function GetEncoding(Bytes As Byte()) As Encoding
         Dim Length As Integer = Bytes.Count
-        If Length <= 2 Then Return New UTF8Encoding(False) '不带 BOM 的 UTF8
+        If Length < 3 Then Return New UTF8Encoding(False) '不带 BOM 的 UTF8
         '根据 BOM 判断编码
         If Bytes(0) >= &HEF Then
             '有 BOM 类型
@@ -1108,8 +1093,6 @@ Re:
         Dim Retry As Boolean = False
 Re:
         Try
-            ''检测该文件是否在下载中，若在下载则放弃检测
-            'If IgnoreOnDownloading AndAlso NetManage.Files.ContainsKey(FilePath) AndAlso NetManage.Files(FilePath).State <= NetState.Merge Then Return ""
             '获取 SHA1
             Dim file As New FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
             Dim sha1 As SHA1 = New SHA1CryptoServiceProvider()
@@ -1255,9 +1238,15 @@ Re:
     Public Function DeleteDirectory(Path As String, Optional IgnoreIssue As Boolean = False) As Integer
         If Not Directory.Exists(Path) Then Return 0
         Dim DeletedCount As Integer = 0
-        Dim Temp As String()
-        Temp = Directory.GetFiles(Path)
-        For Each FilePath As String In Temp
+        Dim Files As String()
+        Try
+            Files = Directory.GetFiles(Path)
+        Catch ex As DirectoryNotFoundException '#4549
+            Log(ex, $"疑似为孤立符号链接，尝试直接删除（{Path}）", LogLevel.Developer)
+            Directory.Delete(Path)
+            Return 0
+        End Try
+        For Each FilePath As String In Files
             Dim RetriedFile As Boolean = False
 RetryFile:
             Try
@@ -1276,8 +1265,7 @@ RetryFile:
                 End If
             End Try
         Next
-        Temp = Directory.GetDirectories(Path)
-        For Each str As String In Temp
+        For Each str As String In Directory.GetDirectories(Path)
             DeleteDirectory(str, IgnoreIssue)
         Next
         Dim RetriedDir As Boolean = False
@@ -1459,14 +1447,14 @@ RetryDir:
     End Function
 
     ''' <summary>
-    ''' 获取 Json 对象。
+    ''' 获取 JSON 对象。
     ''' </summary>
     Public Function GetJson(Data As String)
         Try
             Return JsonConvert.DeserializeObject(Data, New JsonSerializerSettings With {.DateTimeZoneHandling = DateTimeZoneHandling.Local})
         Catch ex As Exception
             Dim Length As Integer = If(Data, "").Length
-            Throw New Exception("格式化 json 对象失败：" & If(Length > 10000, Data.Substring(0, 100) & $"...(全长 {Length} 个字符)..." & Right(Data, 100), Data))
+            Throw New Exception("格式化 JSON 失败：" & If(Length > 2000, Data.Substring(0, 500) & $"...(全长 {Length} 个字符)..." & Right(Data, 500), Data))
         End Try
     End Function
 
@@ -1587,14 +1575,14 @@ RetryDir:
     ''' 获取处于两个子字符串之间的部分。
     ''' 会裁切尽可能多的内容：匹配开始使用 LastIndexOf，匹配结束使用 IndexOf，但如果未找到子字符串则不裁切。
     ''' </summary>
-    <Extension> Public Function Between(Str As String, Before As String, After As String, Optional IgnoreCase As Boolean = False) As String
-        Dim StartPos As Integer = If(String.IsNullOrEmpty(Before), -1, Str.LastIndexOfF(Before, IgnoreCase))
+    <Extension> Public Function Between(Str As String, After As String, Before As String, Optional IgnoreCase As Boolean = False) As String
+        Dim StartPos As Integer = If(String.IsNullOrEmpty(After), -1, Str.LastIndexOfF(After, IgnoreCase))
         If StartPos >= 0 Then
-            StartPos += Before.Length
+            StartPos += After.Length
         Else
             StartPos = 0
         End If
-        Dim EndPos As Integer = If(String.IsNullOrEmpty(After), -1, Str.IndexOfF(After, StartPos, IgnoreCase))
+        Dim EndPos As Integer = If(String.IsNullOrEmpty(Before), -1, Str.IndexOfF(Before, StartPos, IgnoreCase))
         If EndPos >= 0 Then
             Return Str.Substring(StartPos, EndPos - StartPos)
         ElseIf StartPos > 0 Then
@@ -1655,10 +1643,15 @@ RetryDir:
     End Function
 
     ''' <summary>
-    ''' 输入 And 字符不会报错的 Val。
+    ''' 不会报错的 Val。
+    ''' 如果输入有误，返回 0。
     ''' </summary>
     Public Function Val(Str As Object) As Double
-        Return If(TypeOf Str Is String AndAlso Str = "&", 0, Conversion.Val(Str))
+        Try
+            Return If(TypeOf Str Is String AndAlso Str = "&", 0, Conversion.Val(Str))
+        Catch
+            Return 0
+        End Try
     End Function
 
     '转义
@@ -1863,6 +1856,13 @@ RetryDir:
         Dim NewProcess = Process.Start(New ProcessStartInfo(PathWithName) With {.Verb = "runas", .Arguments = Argument})
         NewProcess.WaitForExit()
         Return NewProcess.ExitCode
+    End Function
+
+    ''' <summary>
+    ''' 判断当前系统语言是否为中文。
+    ''' </summary>
+    Public Function IsSystemLanguageChinese() As Boolean
+        Return CultureInfo.CurrentCulture.TwoLetterISOLanguageName = "zh" OrElse CultureInfo.CurrentUICulture.TwoLetterISOLanguageName = "zh"
     End Function
 
     Private Uuid As Integer = 1
@@ -2670,7 +2670,11 @@ Retry:
     End Sub
     Public Function CanFeedback(ShowHint As Boolean) As Boolean
         If False.Equals(PageSetupSystem.IsLauncherNewest) Then
-            If ShowHint Then MyMsgBox("你的 PCL 不是最新版，因此无法提交反馈。" & vbCrLf & "请先在 设置 → 启动器 中更新启动器，确认该问题在最新版中依然存在，然后再提交反馈。", "无法提交反馈")
+            If ShowHint Then
+                If MyMsgBox($"你的 PCL 不是最新版，因此无法提交反馈。{vbCrLf}请在更新后，确认该问题在最新版中依然存在，然后再提交反馈。", "无法提交反馈", "更新", "取消") = 1 Then
+                    UpdateCheckByButton()
+                End If
+            End If
             Return False
         Else
             Return True
@@ -2682,7 +2686,7 @@ Retry:
     Public Sub FeedbackInfo()
         On Error Resume Next
         Log("[System] 诊断信息：" & vbCrLf &
-            "操作系统：" & My.Computer.Info.OSFullName & vbCrLf &
+            "操作系统：" & My.Computer.Info.OSFullName & "（32 位：" & Is32BitSystem & "）" & vbCrLf &
             "剩余内存：" & Int(My.Computer.Info.AvailablePhysicalMemory / 1024 / 1024) & " M / " & Int(My.Computer.Info.TotalPhysicalMemory / 1024 / 1024) & " M" & vbCrLf &
             "DPI：" & DPI & "（" & Math.Round(DPI / 96, 2) * 100 & "%）" & vbCrLf &
             "MC 文件夹：" & If(PathMcFolder, "Nothing") & vbCrLf &

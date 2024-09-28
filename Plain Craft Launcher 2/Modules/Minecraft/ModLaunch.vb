@@ -4,6 +4,7 @@ Public Module ModLaunch
 
 #Region "开始"
 
+    Public CurrentLaunchOptions As McLaunchOptions = Nothing
     Public Class McLaunchOptions
         ''' <summary>
         ''' 强制指定在启动后进入的服务器 IP。
@@ -20,32 +21,34 @@ Public Module ModLaunch
         ''' 默认值：Nothing。使用 McVersionCurrent。
         ''' </summary>
         Public Version As McVersion = Nothing
+        ''' <summary>
+        ''' 额外的启动参数。
+        ''' </summary>
+        Public ExtraArgs As New List(Of String)
     End Class
     ''' <summary>
     ''' 尝试启动 Minecraft。必须在 UI 线程调用。
     ''' 返回是否实际开始了启动（如果没有，则一定弹出了错误提示）。
     ''' </summary>
     Public Function McLaunchStart(Optional Options As McLaunchOptions = Nothing) As Boolean
-        Options = If(Options, New McLaunchOptions)
+        CurrentLaunchOptions = If(Options, New McLaunchOptions)
         '预检查
-        If Not RunInUi() Then
-            Throw New Exception("McLaunchStart 必须在 UI 线程调用！")
-        End If
+        If Not RunInUi() Then Throw New Exception("McLaunchStart 必须在 UI 线程调用！")
         If McLaunchLoader.State = LoadState.Loading Then
             Hint("已有游戏正在启动中！", HintType.Critical)
             Return False
         End If
         '强制切换需要启动的版本
-        If Options.Version IsNot Nothing AndAlso McVersionCurrent <> Options.Version Then
-            McLaunchLog("在启动前切换到版本 " & Options.Version.Name)
+        If CurrentLaunchOptions.Version IsNot Nothing AndAlso McVersionCurrent <> CurrentLaunchOptions.Version Then
+            McLaunchLog("在启动前切换到版本 " & CurrentLaunchOptions.Version.Name)
             '检查版本
-            Options.Version.Load()
-            If Options.Version.State = McVersionState.Error Then
-                Hint("无法启动 Minecraft：" & Options.Version.Info, HintType.Critical)
+            CurrentLaunchOptions.Version.Load()
+            If CurrentLaunchOptions.Version.State = McVersionState.Error Then
+                Hint("无法启动 Minecraft：" & CurrentLaunchOptions.Version.Info, HintType.Critical)
                 Return False
             End If
             '切换版本
-            McVersionCurrent = Options.Version
+            McVersionCurrent = CurrentLaunchOptions.Version
             Setup.Set("LaunchVersionSelect", McVersionCurrent.Name)
             FrmLaunchLeft.RefreshButtonsUI()
             FrmLaunchLeft.RefreshPage(False, False)
@@ -95,7 +98,7 @@ Public Module ModLaunch
             McLaunchPrecheck()
             McLaunchLog("预检测已通过")
         Catch ex As Exception
-            Hint(ex.Message, HintType.Critical)
+            If Not ex.Message.StartsWithF("$$") Then Hint(ex.Message, HintType.Critical)
             Throw
         End Try
         '正式加载
@@ -104,7 +107,7 @@ Public Module ModLaunch
             Dim Loaders As New List(Of LoaderBase) From {
                 New LoaderTask(Of Integer, Integer)("获取 Java", AddressOf McLaunchJava) With {.ProgressWeight = 4, .Block = False},
                 McLoginLoader,
-                New LoaderCombo(Of String)("补全文件", DlClientFix(McVersionCurrent, False, AssetsIndexExistsBehaviour.DownloadInBackground, True)) With {.ProgressWeight = 15, .Show = False},
+                New LoaderCombo(Of String)("补全文件", DlClientFix(McVersionCurrent, False, AssetsIndexExistsBehaviour.DownloadInBackground)) With {.ProgressWeight = 15, .Show = False},
                 New LoaderTask(Of String, List(Of McLibToken))("获取启动参数", AddressOf McLaunchArgumentMain) With {.ProgressWeight = 2},
                 New LoaderTask(Of List(Of McLibToken), Integer)("解压文件", AddressOf McLaunchNatives) With {.ProgressWeight = 2},
                 New LoaderTask(Of Integer, Integer)("预启动处理", AddressOf McLaunchPrerun) With {.ProgressWeight = 1},
@@ -144,7 +147,7 @@ Public Module ModLaunch
                     Hint(McVersionCurrent.Name & " 启动成功！", HintType.Finish)
                 Case LoadState.Aborted
                     If AbortHint Is Nothing Then
-                        Hint(If(Loader.Input.SaveBatch Is Nothing, "已取消启动！", "已取消导出启动脚本！"), HintType.Info)
+                        Hint(If(CurrentLaunchOptions?.SaveBatch Is Nothing, "已取消启动！", "已取消导出启动脚本！"), HintType.Info)
                     Else
                         Hint(AbortHint, HintType.Finish)
                     End If
@@ -159,7 +162,7 @@ NextInner:
             If CurrentEx.Message.StartsWithF("$") Then
                 '若有以 $ 开头的错误信息，则以此为准显示提示
                 '若错误信息为 $$，则不提示
-                If Not CurrentEx.Message = "$$" Then MyMsgBox(CurrentEx.Message.TrimStart("$"), If(Loader.Input.SaveBatch Is Nothing, "启动失败", "导出启动脚本失败"))
+                If Not CurrentEx.Message = "$$" Then MyMsgBox(CurrentEx.Message.TrimStart("$"), If(CurrentLaunchOptions?.SaveBatch Is Nothing, "启动失败", "导出启动脚本失败"))
                 Throw
             ElseIf CurrentEx.InnerException IsNot Nothing Then
                 '检查下一级错误
@@ -168,7 +171,9 @@ NextInner:
             Else
                 '没有特殊处理过的错误信息
                 McLaunchLog("错误：" & GetExceptionDetail(ex))
-                Log(ex, If(Loader.Input.SaveBatch Is Nothing, "Minecraft 启动失败", "导出启动脚本失败"), LogLevel.Msgbox, If(Loader.Input.SaveBatch Is Nothing, "启动失败", "导出启动脚本失败"))
+                Log(ex,
+                    If(CurrentLaunchOptions?.SaveBatch Is Nothing, "Minecraft 启动失败", "导出启动脚本失败"), LogLevel.Msgbox,
+                    If(CurrentLaunchOptions?.SaveBatch Is Nothing, "启动失败", "导出启动脚本失败"))
                 Throw
             End If
         End Try
@@ -211,36 +216,45 @@ NextInner:
         If McVersionCurrent.State = McVersionState.Error Then Throw New Exception("Minecraft 存在问题：" & McVersionCurrent.Info)
         '检查输入信息
         Dim CheckResult As String = ""
-        RunInUiWait(Sub()
-                        Dim LoginInput As McLoginData = McLoginInput()
-                        CheckResult = McLoginAble(LoginInput)
-                    End Sub)
+        RunInUiWait(Sub() CheckResult = McLoginAble(McLoginInput()))
         If CheckResult <> "" Then Throw New ArgumentException(CheckResult)
 #If BETA Then
         '求赞助
-        RunInNewThread(Sub()
-                           Select Case Setup.Get("SystemLaunchCount")
-                               Case 20, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1700, 1900, 2100, 2300, 2500
-                                   If MyMsgBox("PCL 已经为你启动了 " & Setup.Get("SystemLaunchCount") & " 次游戏啦！" & vbCrLf &
-                                               "如果觉得 PCL 还算好用的话，也可以考虑赞助一下作者……一点心意也行……" & vbCrLf &
-                                               "毕竟一个人开发也不容易（悲）……",
-                                               "求赞助啦……", "这就赞助！", "但是我拒绝") = 1 Then
-                                       OpenWebsite("https://afdian.net/a/LTCat")
-                                   End If
-                           End Select
-                       End Sub, "Donate")
+        RunInNewThread(
+        Sub()
+            Select Case Setup.Get("SystemLaunchCount")
+                Case 10, 20, 40, 60, 80, 100, 120, 150, 200, 250, 300, 350, 400, 500, 600, 700, 800, 900, 1000, 1200, 1400, 1600, 1800, 2000
+                    If MyMsgBox("PCL 已经为你启动了 " & Setup.Get("SystemLaunchCount") & " 次游戏啦！" & vbCrLf &
+                                "如果觉得 PCL 还算好用的话，也可以考虑赞助一下作者……一点心意也行……" & vbCrLf &
+                                "毕竟一个人开发也不容易（悲）……",
+                                "求赞助啦……", "这就赞助！", "但是我拒绝") = 1 Then
+                        OpenWebsite("https://afdian.com/a/LTCat")
+                    End If
+            End Select
+        End Sub, "Donate")
 #End If
         '正版购买提示
         If Not Setup.Get("HintBuy") AndAlso Setup.Get("LoginType") <> McLoginType.Ms Then
-            Select Case Setup.Get("SystemLaunchCount")
-                Case 10, 35, 75, 125, 175, 225, 275, 325, 375, 425, 475, 550, 650, 750, 850, 950, 1050, 1150, 1250, 1350, 1450, 1600, 1800, 2000, 2200, 2400
-                    If MyMsgBox("你已经启动了 " & Setup.Get("SystemLaunchCount") & " 次 Minecraft 啦！" & vbCrLf &
-                                "如果觉得 Minecraft 还不错，也可以考虑购买正版支持一下，毕竟开发游戏也很不容易……" & vbCrLf &
-                                "在你登录一次正版账号后，就不会再出现这个提示了。",
-                                "考虑一下正版？", "购买正版游戏", "下次一定") = 1 Then
-                        OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj")
-                    End If
-            End Select
+            If IsSystemLanguageChinese() Then
+                Select Case Setup.Get("SystemLaunchCount")
+                    Case 2, 5, 10, 15, 20, 40, 60, 80, 100, 125, 150, 175, 200, 250, 300, 350, 400, 500, 600, 700, 800, 900, 1000, 1200, 1400, 1600, 1800, 2000
+                        If MyMsgBox("你已经启动了 " & Setup.Get("SystemLaunchCount") & " 次 Minecraft 啦！" & vbCrLf &
+                                    "如果觉得 Minecraft 还不错，可以购买正版支持一下，毕竟开发游戏也真的很不容易……" & vbCrLf & vbCrLf &
+                                    "在你登录一次正版账号后，就不会再出现这个提示了！",
+                                    "考虑一下正版？", "支持正版游戏！", "下次一定") = 1 Then
+                            OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj")
+                        End If
+                End Select
+            ElseIf Setup.Get("LoginType") = McLoginType.Legacy Then
+                Select Case MyMsgBox("你必须先登录正版账号，才能进行离线登录！", "正版验证", "购买正版", "试玩", "返回",
+                    Button1Action:=Sub() OpenWebsite("https://www.xbox.com/zh-cn/games/store/minecraft-java-bedrock-edition-for-pc/9nxp44l49shj"))
+                    Case 2
+                        Hint("游戏将以试玩模式启动！", HintType.Critical)
+                        CurrentLaunchOptions.ExtraArgs.Add("--demo")
+                    Case 3
+                        Throw New Exception("$$")
+                End Select
+            End If
         End If
     End Sub
 
@@ -487,19 +501,22 @@ NextInner:
 #Region "分方式登录模块"
 
     '各个登录方式的主对象与输入构造
-    Public McLoginMsLoader As New LoaderTask(Of McLoginMs, McLoginResult)("Loader Login Ms", AddressOf McLoginMsStart) With {.ReloadTimeout = 300000}
+    Public McLoginMsLoader As New LoaderTask(Of McLoginMs, McLoginResult)("Loader Login Ms", AddressOf McLoginMsStart)
     Public McLoginLegacyLoader As New LoaderTask(Of McLoginLegacy, McLoginResult)("Loader Login Legacy", AddressOf McLoginLegacyStart)
-    Public McLoginNideLoader As New LoaderTask(Of McLoginServer, McLoginResult)("Loader Login Nide", AddressOf McLoginServerStart) With {.ReloadTimeout = 60000}
-    Public McLoginAuthLoader As New LoaderTask(Of McLoginServer, McLoginResult)("Loader Login Auth", AddressOf McLoginServerStart) With {.ReloadTimeout = 60000}
+    Public McLoginNideLoader As New LoaderTask(Of McLoginServer, McLoginResult)("Loader Login Nide", AddressOf McLoginServerStart) With {.ReloadTimeout = 1000 * 60 * 10}
+    Public McLoginAuthLoader As New LoaderTask(Of McLoginServer, McLoginResult)("Loader Login Auth", AddressOf McLoginServerStart) With {.ReloadTimeout = 1000 * 60 * 10}
 
     '主加载函数，返回所有需要的登录信息
+    Private McLoginMsRefreshTime As Long = 0 '上次刷新登录的时间
     Private Sub McLoginMsStart(Data As LoaderTask(Of McLoginMs, McLoginResult))
         Dim Input As McLoginMs = Data.Input
         Dim LogUsername As String = Input.UserName
         McLaunchLog("登录方式：正版（" & If(LogUsername = "", "尚未登录", LogUsername) & "）")
         Data.Progress = 0.05
         '检查是否已经登录完成
-        If Input.AccessToken <> "" AndAlso Not Data.IsForceRestarting Then
+        If Not Data.IsForceRestarting AndAlso '不要求强行重启
+           Input.AccessToken <> "" AndAlso '已经登录过了
+           (McLoginMsRefreshTime > 0 AndAlso GetTimeTick() - McLoginMsRefreshTime < 1000 * 60 * 10) Then '完成时间在 10 分钟内
             Data.Output = New McLoginResult With
                 {.AccessToken = Input.AccessToken, .Name = Input.UserName, .Uuid = Input.Uuid, .Type = "Microsoft", .ClientToken = Input.Uuid, .ProfileJson = Input.ProfileJson}
             GoTo SkipLogin
@@ -509,33 +526,31 @@ NextInner:
         If Input.OAuthRefreshToken = "" Then
             '无 RefreshToken
 Relogin:
-            Dim OAuthCode As String = MsLoginStep1(Data)
-            If Data.IsAborted Then Throw New ThreadInterruptedException
-            Data.Progress = 0.2
-            OAuthTokens = MsLoginStep2(OAuthCode, False)
+            OAuthTokens = MsLoginStep1New(Data)
         Else
             '有 RefreshToken
-            OAuthTokens = MsLoginStep2(Input.OAuthRefreshToken, True)
+            OAuthTokens = MsLoginStep1Refresh(Input.OAuthRefreshToken) '要求重新打开登录网页认证
+            If OAuthTokens(0) = "Relogin" Then GoTo Relogin
         End If
-        '要求重新打开登录网页认证
-        If OAuthTokens(0) = "Relogin" Then GoTo Relogin
-        Data.Progress = 0.35
+        If Data.IsAborted Then Throw New ThreadInterruptedException
+        Data.Progress = 0.25
         If Data.IsAborted Then Throw New ThreadInterruptedException
         Dim OAuthAccessToken As String = OAuthTokens(0)
         Dim OAuthRefreshToken As String = OAuthTokens(1)
-        Dim XBLToken As String = MsLoginStep3(OAuthAccessToken)
-        Data.Progress = 0.5
+        Dim XBLToken As String = MsLoginStep2(OAuthAccessToken)
+        Data.Progress = 0.4
         If Data.IsAborted Then Throw New ThreadInterruptedException
-        Dim Tokens = MsLoginStep4(XBLToken)
-        Data.Progress = 0.65
+        Dim Tokens = MsLoginStep3(XBLToken)
+        Data.Progress = 0.55
         If Data.IsAborted Then Throw New ThreadInterruptedException
-        Dim AccessToken As String = MsLoginStep5(Tokens)
-        Data.Progress = 0.8
+        Dim AccessToken As String = MsLoginStep4(Tokens)
+        Data.Progress = 0.7
         If Data.IsAborted Then Throw New ThreadInterruptedException
-        MsLoginStep6(AccessToken)
-        Data.Progress = 0.9
+        MsLoginStep5(AccessToken)
+        Data.Progress = 0.85
         If Data.IsAborted Then Throw New ThreadInterruptedException
-        Dim Result = MsLoginStep7(AccessToken)
+        Dim Result = MsLoginStep6(AccessToken)
+        Data.Progress = 0.98
         '输出登录结果
         Setup.Set("CacheMsOAuthRefresh", OAuthRefreshToken)
         Setup.Set("CacheMsAccess", AccessToken)
@@ -547,11 +562,11 @@ Relogin:
         MsJson(Result(1)) = OAuthRefreshToken
         Setup.Set("LoginMsJson", MsJson.ToString(Newtonsoft.Json.Formatting.None))
         Data.Output = New McLoginResult With {.AccessToken = AccessToken, .Name = Result(1), .Uuid = Result(0), .Type = "Microsoft", .ClientToken = Result(0), .ProfileJson = Result(2)}
-        '解锁主题
-SkipLogin:
+        '结束
+        McLoginMsRefreshTime = GetTimeTick()
         McLaunchLog("微软登录完成")
+SkipLogin:
         Setup.Set("HintBuy", True) '关闭正版购买提示
-        Data.Progress = 0.98
         If ThemeUnlock(10, False) Then MyMsgBox("感谢你对正版游戏的支持！" & vbCrLf & "隐藏主题 跳票红 已解锁！", "提示")
     End Sub
     Private Sub McLoginServerStart(Data As LoaderTask(Of McLoginServer, McLoginResult))
@@ -668,6 +683,7 @@ LoginFinish:
             Url:=Data.Input.BaseUrl & "/validate",
             Method:="POST",
             Data:=RequestData.ToString(0),
+            Headers:=New Dictionary(Of String, String) From {{"Accept-Language", "zh_CN"}},
             ContentType:="application/json; charset=utf-8") '没有返回值的
         '将登录结果输出
         Data.Output.AccessToken = AccessToken
@@ -691,6 +707,7 @@ LoginFinish:
                    ""name"":""" & Setup.Get("Cache" & Data.Input.Token & "Name") & """},", "") & "
                ""accessToken"":""" & Setup.Get("Cache" & Data.Input.Token & "Access") & """,
                ""clientToken"":""" & Setup.Get("Cache" & Data.Input.Token & "Client") & """}",
+               Headers:=New Dictionary(Of String, String) From {{"Accept-Language", "zh_CN"}},
                ContentType:="application/json; charset=utf-8"))
         '将登录结果输出
         If LoginJson("selectedProfile") Is Nothing Then Throw New Exception("选择的角色 " & Setup.Get("Cache" & Data.Input.Token & "Name") & " 无效！")
@@ -721,6 +738,7 @@ LoginFinish:
                 Url:=Data.Input.BaseUrl & "/authenticate",
                 Method:="POST",
                 Data:=RequestData.ToString(0),
+                Headers:=New Dictionary(Of String, String) From {{"Accept-Language", "zh_CN"}},
                 ContentType:="application/json; charset=utf-8"))
             '检查登录结果
             If LoginJson("availableProfiles").Count = 0 Then
@@ -780,6 +798,16 @@ LoginFinish:
         Catch ex As Exception
             Dim AllMessage As String = GetExceptionSummary(ex)
             Log(ex, "登录失败原始错误信息", LogLevel.Normal)
+            '读取服务器返回的错误
+            If TypeOf ex Is ResponsedWebException Then
+                Dim ErrorMessage As String = Nothing
+                Try
+                    ErrorMessage = GetJson(DirectCast(ex, ResponsedWebException).Response)("errorMessage")
+                Catch
+                End Try
+                If Not String.IsNullOrWhiteSpace(ErrorMessage) Then Throw New Exception("$登录失败：" & ErrorMessage)
+            End If
+            '通用关键字检测
             If AllMessage.Contains("403") Then
                 Select Case Data.Input.Type
                     Case McLoginType.Auth
@@ -805,88 +833,38 @@ LoginFinish:
         End Try
     End Function
 
-    '微软登录步骤 1：打开网页认证，获取 OAuth Code
-    Private Function MsLoginStep1(Data As LoaderTask(Of McLoginMs, McLoginResult)) As String
-        McLaunchLog("开始微软登录步骤 1")
-        If True OrElse OsVersion <= New Version(10, 0, 17763, 0) Then '由于 #3849，WebBrowser 已经无法正常加载微软登录网页了
-SystemBrowser:
-            'Windows 7 或老版 Windows 10 登录
-            OpenWebsite(FormLoginOAuth.LoginUrl1)
-            Dim Result As String =
-                MyMsgBoxInput("等待网页登录",
-                              "登录完成后，网页会变得完全空白，把那个空白网页的网址复制到下面的框中就行了！" & vbCrLf &
-                              "如果网络环境不佳，它可能一直加载不出来，那就只能试试用 VPN 或加速器了。",
-                              ValidateRules:=New ObjectModel.Collection(Of Validate) From {New ValidateRegex("(?<=code\=)[^&]+", "返回网址应以 https://login.live.com/oauth20_desktop.srf?code= 开头")},
-                              HintText:="https://login.live.com/oauth20_desktop.srf?code=XXXXXX")
-            If Result Is Nothing Then
-                McLaunchLog("微软登录已在步骤 1 被取消")
-                Throw New ThreadInterruptedException("$$")
-            Else
-                Return RegexSeek(Result, "(?<=code\=)[^&]+")
-            End If
-            Hint("网页登录成功，你可以关闭浏览器啦！", HintType.Finish)
+    '微软登录步骤 1，原始登录：获取 DeviceCode 并开启登录网页
+    Private Function MsLoginStep1New(Data As LoaderTask(Of McLoginMs, McLoginResult)) As String()
+        '参考：https://learn.microsoft.com/zh-cn/entra/identity-platform/v2-oauth2-device-code
+
+        '初始请求
+        McLaunchLog("开始微软登录步骤 1/6（原始登录）")
+        Dim PrepareJson As JObject = GetJson(NetRequestMulty("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode", "POST",
+            $"client_id={OAuthClientId}&tenant=/consumers&scope=XboxLive.signin%20offline_access", "application/x-www-form-urlencoded", 2))
+        McLaunchLog("网页登录地址：" & PrepareJson("verification_uri").ToString)
+
+        '弹窗
+        Dim Converter As New MyMsgBoxConverter With {.Content = PrepareJson, .ForceWait = True, .Type = MyMsgBoxType.Login}
+        WaitingMyMsgBox.Add(Converter)
+        While Converter.Result Is Nothing
+            Thread.Sleep(100)
+        End While
+        If TypeOf Converter.Result Is Exception Then
+            Throw CType(Converter.Result, Exception)
         Else
-            'Windows 10 登录
-            Dim ReturnCode As String = Nothing
-            Dim ReturnEx As Exception = Nothing
-            Dim IsFinished As LoadState = LoadState.Loading
-            Dim LoginForm As FormLoginOAuth = Nothing
-            Dim IsSwitchToSystemBrowser As Boolean = False
-            RunInUi(Sub()
-                        Try
-                            LoginForm = New FormLoginOAuth
-                            LoginForm.Show()
-                            AddHandler LoginForm.OnLoginSuccess, Sub(Code As String)
-                                                                     ReturnCode = Code
-                                                                     IsFinished = LoadState.Finished
-                                                                 End Sub
-                            AddHandler LoginForm.OnLoginCanceled, Sub(IsSwitch As Boolean)
-                                                                      IsFinished = LoadState.Aborted
-                                                                      IsSwitchToSystemBrowser = IsSwitch
-                                                                  End Sub
-                        Catch ex As Exception
-                            ReturnEx = ex
-                            IsFinished = LoadState.Failed
-                        End Try
-                    End Sub)
-            Do While IsFinished = LoadState.Loading AndAlso Not Data.IsAborted
-                Thread.Sleep(20)
-            Loop
-            RunInUi(Sub() If LoginForm IsNot Nothing Then LoginForm.Close())
-            If IsFinished = LoadState.Finished Then
-                Return ReturnCode
-            ElseIf IsFinished = LoadState.Failed Then
-                Throw ReturnEx
-            ElseIf IsSwitchToSystemBrowser Then
-                McLaunchLog("微软登录在步骤 1 要求切换到系统浏览器")
-                GoTo SystemBrowser
-            Else
-                McLaunchLog("微软登录已在步骤 1 被取消")
-                Throw New ThreadInterruptedException("$$")
-            End If
+            Return Converter.Result
         End If
     End Function
-    '微软登录步骤 2：从 OAuth Code 或 OAuth RefreshToken 获取 {OAuth AccessToken, OAuth RefreshToken}
-    Private Function MsLoginStep2(Code As String, IsRefresh As Boolean) As String()
-        McLaunchLog("开始微软登录步骤 2（" & If(IsRefresh, "", "非") & "刷新登录）")
 
-        Dim Request As String
-        If IsRefresh Then
-            Request = "client_id=00000000402b5328" & "&" &
-                      "refresh_token=" & Uri.EscapeDataString(Code) & "&" &
-                      "grant_type=refresh_token" & "&" &
-                      "redirect_uri=" & Uri.EscapeDataString("https://login.live.com/oauth20_desktop.srf") & "&" &
-                      "scope=" & Uri.EscapeDataString("service::user.auth.xboxlive.com::MBI_SSL")
-        Else
-            Request = "client_id=00000000402b5328" & "&" &
-                      "code=" & Uri.EscapeDataString(Code) & "&" &
-                      "grant_type=authorization_code" & "&" &
-                      "redirect_uri=" & Uri.EscapeDataString("https://login.live.com/oauth20_desktop.srf") & "&" &
-                      "scope=" & Uri.EscapeDataString("service::user.auth.xboxlive.com::MBI_SSL")
-        End If
+    '微软登录步骤 1，刷新登录：从 OAuth Code 或 OAuth RefreshToken 获取 {OAuth AccessToken, OAuth RefreshToken}
+    Private Function MsLoginStep1Refresh(Code As String) As String()
+        McLaunchLog("开始微软登录步骤 1/6（刷新登录）")
+
         Dim Result As String
         Try
-            Result = NetRequestMulty("https://login.live.com/oauth20_token.srf", "POST", Request, "application/x-www-form-urlencoded", 2)
+            Result = NetRequestMulty("https://login.live.com/oauth20_token.srf", "POST",
+                $"client_id={OAuthClientId}&refresh_token={Uri.EscapeDataString(Code)}&grant_type=refresh_token&scope=XboxLive.signin%20offline_access",
+                "application/x-www-form-urlencoded", 2)
         Catch ex As Exception
             If ex.Message.Contains("must sign in again") OrElse ex.Message.Contains("invalid_grant") Then '#269
                 Return {"Relogin", ""}
@@ -900,28 +878,29 @@ SystemBrowser:
         Dim RefreshToken As String = ResultJson("refresh_token").ToString
         Return {AccessToken, RefreshToken}
     End Function
-    '微软登录步骤 3：从 OAuth AccessToken 获取 XBLToken
-    Private Function MsLoginStep3(AccessToken As String) As String
-        McLaunchLog("开始微软登录步骤 3")
+
+    '微软登录步骤 2：从 OAuth AccessToken 获取 XBLToken
+    Private Function MsLoginStep2(AccessToken As String) As String
+        McLaunchLog("开始微软登录步骤 2/6")
 
         Dim Request As String = "{
-                                    ""Properties"": {
-                                        ""AuthMethod"": ""RPS"",
-                                        ""SiteName"": ""user.auth.xboxlive.com"",
-                                        ""RpsTicket"": """ & AccessToken & """
-                                    },
-                                    ""RelyingParty"": ""http://auth.xboxlive.com"",
-                                    ""TokenType"": ""JWT""
-                                 }"
+           ""Properties"": {
+               ""AuthMethod"": ""RPS"",
+               ""SiteName"": ""user.auth.xboxlive.com"",
+               ""RpsTicket"": """ & If(AccessToken.StartsWithF("d="), "", "d=") & AccessToken & """
+           },
+           ""RelyingParty"": ""http://auth.xboxlive.com"",
+           ""TokenType"": ""JWT""
+        }" 'TODO: 新版登录改为 ""RpsTicket"": ""d=" & AccessToken & """
         Dim Result As String = NetRequestMulty("https://user.auth.xboxlive.com/user/authenticate", "POST", Request, "application/json", 3)
 
         Dim ResultJson As JObject = GetJson(Result)
         Dim XBLToken As String = ResultJson("Token").ToString
         Return XBLToken
     End Function
-    '微软登录步骤 4：从 XBLToken 获取 {XSTSToken, UHS}
-    Private Function MsLoginStep4(XBLToken As String) As String()
-        McLaunchLog("开始微软登录步骤 4")
+    '微软登录步骤 3：从 XBLToken 获取 {XSTSToken, UHS}
+    Private Function MsLoginStep3(XBLToken As String) As String()
+        McLaunchLog("开始微软登录步骤 3/6")
 
         Dim Request As String = "{
                                     ""Properties"": {
@@ -971,9 +950,9 @@ SystemBrowser:
         Dim UHS As String = ResultJson("DisplayClaims")("xui")(0)("uhs").ToString
         Return {XSTSToken, UHS}
     End Function
-    '微软登录步骤 5：从 {XSTSToken, UHS} 获取 Minecraft AccessToken
-    Private Function MsLoginStep5(Tokens As String()) As String
-        McLaunchLog("开始微软登录步骤 5")
+    '微软登录步骤 4：从 {XSTSToken, UHS} 获取 Minecraft AccessToken
+    Private Function MsLoginStep4(Tokens As String()) As String
+        McLaunchLog("开始微软登录步骤 4/6")
 
         Dim Request As String = New JObject(New JProperty("identityToken", $"XBL3.0 x={Tokens(1)};{Tokens(0)}")).ToString(0)
         Dim Result As String
@@ -996,9 +975,9 @@ SystemBrowser:
         Dim AccessToken As String = ResultJson("access_token").ToString
         Return AccessToken
     End Function
-    '微软登录步骤 6：验证微软账号是否持有 MC，这也会刷新 XGP
-    Private Sub MsLoginStep6(AccessToken As String)
-        McLaunchLog("开始微软登录步骤 6")
+    '微软登录步骤 5：验证微软账号是否持有 MC，这也会刷新 XGP
+    Private Sub MsLoginStep5(AccessToken As String)
+        McLaunchLog("开始微软登录步骤 5/6")
 
         Dim Result As String = NetRequestMulty("https://api.minecraftservices.com/entitlements/mcstore", "GET", "", "application/json", 2, New Dictionary(Of String, String) From {{"Authorization", "Bearer " & AccessToken}})
         Try
@@ -1015,9 +994,9 @@ SystemBrowser:
             Throw
         End Try
     End Sub
-    '微软登录步骤 7：从 Minecraft AccessToken 获取 {UUID, UserName, ProfileJson}
-    Private Function MsLoginStep7(AccessToken As String) As String()
-        McLaunchLog("开始微软登录步骤 7")
+    '微软登录步骤 6：从 Minecraft AccessToken 获取 {UUID, UserName, ProfileJson}
+    Private Function MsLoginStep6(AccessToken As String) As String()
+        McLaunchLog("开始微软登录步骤 6/6")
 
         Dim Result As String
         Try
@@ -1069,7 +1048,7 @@ SystemBrowser:
             Case 3
                 '使用正版用户名
                 Try
-                    If Not SkinName = "" Then
+                    If SkinName <> "" AndAlso McVersionCurrent.Version.McCodeMain < 20 Then '1.20+ 或快照版不能使用该项（#3746）
                         Log("[Skin] 由于离线皮肤设置，使用正版 UUID：" & SkinName)
                         Uuid = McLoginMojangUuid(SkinName, False)
                     End If
@@ -1199,7 +1178,7 @@ SystemBrowser:
         '统一通行证检测
         If Setup.Get("LoginType") = McLoginType.Nide Then
             '至少 Java 8u101
-            MinVer = If(New Version(1, 8, 0, 101) > MinVer, New Version(1, 8, 0, 101), MinVer)
+            MinVer = If(New Version(1, 8, 0, 141) > MinVer, New Version(1, 8, 0, 141), MinVer)
         End If
 
         SyncLock JavaLock
@@ -1226,12 +1205,12 @@ SystemBrowser:
             ElseIf MaxVer < New Version(1, 8, 0, 0) Then
                 JavaCode = 7
                 If Not JavaDownloadConfirm("Java 7", True) Then Throw New Exception("$$")
-            ElseIf MinVer > New Version(1, 8, 0, 100) AndAlso MaxVer < New Version(1, 8, 0, 321) Then
-                JavaCode = "8u101"
-                If Not JavaDownloadConfirm("Java 8.0.101 ~ 8.0.320", True) Then Throw New Exception("$$")
-            ElseIf MinVer > New Version(1, 8, 0, 100) Then
-                JavaCode = "8u101"
-                If Not JavaDownloadConfirm("Java 8.0.101 或更高版本的 Java 8", True) Then Throw New Exception("$$")
+            ElseIf MinVer > New Version(1, 8, 0, 140) AndAlso MaxVer < New Version(1, 8, 0, 321) Then
+                JavaCode = "8u141"
+                If Not JavaDownloadConfirm("Java 8.0.141 ~ 8.0.320", True) Then Throw New Exception("$$")
+            ElseIf MinVer > New Version(1, 8, 0, 140) Then
+                JavaCode = "8u141"
+                If Not JavaDownloadConfirm("Java 8.0.141 或更高版本的 Java 8", True) Then Throw New Exception("$$")
             ElseIf MaxVer < New Version(1, 8, 0, 321) Then
                 JavaCode = 8
                 If Not JavaDownloadConfirm("Java 8.0.320 或更低版本的 Java 8") Then Throw New Exception("$$")
@@ -1280,20 +1259,28 @@ SystemBrowser:
         Dim WrapperPath As String = BaseDir & "\JavaWrapper.jar"
         Log("[Java] 选定的 Java Wrapper 路径：" & WrapperPath)
         SyncLock ExtractJavaWrapperLock '避免 OptiFine 和 Forge 安装时同时释放 Java Wrapper 导致冲突
-            Dim IsWrapperWritten As Boolean = WriteFile(WrapperPath, GetResources("JavaWrapper"))
-            If Not IsWrapperWritten AndAlso File.Exists(WrapperPath) Then
-                '以下为 #4243 的修复，因为未知原因 Java Wrapper 可能变为只读文件
-                Log("[Java] Java Wrapper 文件释放失败，但文件已存在，将在删除后尝试重新生成", LogLevel.Debug)
-                Try
-                    File.Delete(WrapperPath)
-                    IsWrapperWritten = WriteFile(WrapperPath, GetResources("JavaWrapper"))
-                Catch ex As Exception
-                    Log(ex, "Java Wrapper 文件重新释放失败，将尝试更换文件名重新生成")
-                    WrapperPath = BaseDir & "\JavaWrapper2.jar"
-                    IsWrapperWritten = WriteFile(WrapperPath, GetResources("JavaWrapper"))
-                End Try
-            End If
-            If Not IsWrapperWritten Then Throw New FileNotFoundException("释放 Java Wrapper 失败，请查看 PCL 日志查找详细信息")
+            Try
+                WriteFile(WrapperPath, GetResources("JavaWrapper"))
+            Catch ex As Exception
+                If File.Exists(WrapperPath) Then
+                    '因为未知原因 Java Wrapper 可能变为只读文件（#4243）
+                    Log(ex, "Java Wrapper 文件释放失败，但文件已存在，将在删除后尝试重新生成", LogLevel.Developer)
+                    Try
+                        File.Delete(WrapperPath)
+                        WriteFile(WrapperPath, GetResources("JavaWrapper"))
+                    Catch ex2 As Exception
+                        Log(ex2, "Java Wrapper 文件重新释放失败，将尝试更换文件名重新生成", LogLevel.Developer)
+                        WrapperPath = BaseDir & "\JavaWrapper2.jar"
+                        Try
+                            WriteFile(WrapperPath, GetResources("JavaWrapper"))
+                        Catch ex3 As Exception
+                            Throw New FileNotFoundException("释放 Java Wrapper 最终尝试失败", ex3)
+                        End Try
+                    End Try
+                Else
+                    Throw New FileNotFoundException("释放 Java Wrapper 失败", ex)
+                End If
+            End Try
         End SyncLock
         Return WrapperPath
     End Function
@@ -1354,8 +1341,12 @@ SystemBrowser:
         Arguments = Arguments.Replace(" -Dos.name=Windows 10", " -Dos.name=""Windows 10""")
         '全屏
         If Setup.Get("LaunchArgumentWindowType") = 0 Then Arguments += " --fullscreen"
+        '由 Option 传入的额外参数
+        For Each Arg In CurrentLaunchOptions.ExtraArgs
+            Arguments += " " & Arg.Trim
+        Next
         '进服
-        Dim Server As String = If(String.IsNullOrEmpty(McLaunchLoader.Input.ServerIp), Setup.Get("VersionServerEnter", McVersionCurrent), McLaunchLoader.Input.ServerIp)
+        Dim Server As String = If(String.IsNullOrEmpty(CurrentLaunchOptions.ServerIp), Setup.Get("VersionServerEnter", McVersionCurrent), CurrentLaunchOptions.ServerIp)
         If Server.Length > 0 Then
             If McVersionCurrent.ReleaseTime > New Date(2023, 4, 4) Then
                 'QuickPlay
@@ -1785,7 +1776,6 @@ NextVersion:
             {
               ""authenticationDatabase"": {
                 ""00000111112222233333444445555566"": {
-                  ""accessToken"": """ & McLoginLoader.Output.AccessToken & """,
                   ""username"": """ & McLoginLoader.Output.Name.Replace("""", "-") & """,
                   ""profiles"": {
                     ""66666555554444433333222221111100"": {
@@ -1816,7 +1806,6 @@ NextVersion:
                     {
                       ""authenticationDatabase"": {
                         ""00000111112222233333444445555566"": {
-                          ""accessToken"": """ & McLoginLoader.Output.AccessToken & """,
                           ""username"": """ & McLoginLoader.Output.Name.Replace("""", "-") & """,
                           ""profiles"": {
                             ""66666555554444433333222221111100"": {
@@ -1892,16 +1881,12 @@ NextVersion:
         End Try
 
         '离线皮肤 Alex 警告
-        Try
-            If McVersionCurrent.Version.McCodeMain <= 7 AndAlso McVersionCurrent.Version.McCodeMain >= 2 AndAlso '1.7 ~ 1.2
+        If McVersionCurrent.Version.McCodeMain <= 7 AndAlso McVersionCurrent.Version.McCodeMain >= 2 AndAlso '1.2 ~ 1.7
                McLoginLoader.Input.Type = McLoginType.Legacy AndAlso '离线登录
                (Setup.Get("LaunchSkinType") = 2 OrElse '强制 Alex
                (Setup.Get("LaunchSkinType") = 4 AndAlso Setup.Get("LaunchSkinSlim"))) Then '或选用 Alex 皮肤
-                Hint("此 Minecraft 版本尚不支持 Alex 皮肤，你的皮肤可能会显示为 Steve！", HintType.Critical)
-            End If
-        Catch ex As Exception
-            Log(ex, "检查离线皮肤失效失败")
-        End Try
+            Hint("此 Minecraft 版本尚不支持 Alex 皮肤，你的皮肤可能会显示为 Steve！", HintType.Critical)
+        End If
 
         '离线皮肤资源包
         Try
@@ -2061,18 +2046,18 @@ IgnoreCustomSkin:
                 """" & McLaunchJavaSelected.PathJava & """ " & McLaunchArgument & vbCrLf &
                 "echo 游戏已退出。" & vbCrLf &
                 "pause"
-            WriteFile(If(McLaunchLoader.Input.SaveBatch, Path & "PCL\LatestLaunch.bat"), SecretFilter(CmdString, "F"),
+            WriteFile(If(CurrentLaunchOptions.SaveBatch, Path & "PCL\LatestLaunch.bat"), SecretFilter(CmdString, "F"),
                       Encoding:=If(Encoding.Default.Equals(Encoding.UTF8), Encoding.UTF8, Encoding.GetEncoding("GB18030")))
-            If McLaunchLoader.Input.SaveBatch IsNot Nothing Then
+            If CurrentLaunchOptions.SaveBatch IsNot Nothing Then
                 McLaunchLog("导出启动脚本完成，强制结束启动过程")
                 AbortHint = "导出启动脚本成功！"
-                OpenExplorer("/select,""" & McLaunchLoader.Input.SaveBatch & """")
+                OpenExplorer("/select,""" & CurrentLaunchOptions.SaveBatch & """")
                 Loader.Parent.Abort()
                 Exit Sub '导出脚本完成
             End If
         Catch ex As Exception
             Log(ex, "输出启动脚本失败")
-            If McLaunchLoader.Input.SaveBatch IsNot Nothing Then Throw ex '直接触发启动失败
+            If CurrentLaunchOptions.SaveBatch IsNot Nothing Then Throw ex '直接触发启动失败
         End Try
 
         '执行自定义命令
@@ -2143,6 +2128,8 @@ IgnoreCustomSkin:
         StartInfo.EnvironmentVariables("Path") = Join(Paths.Distinct.ToList, ";")
 
         '设置其他参数
+        StartInfo.StandardErrorEncoding = Encoding.UTF8
+        StartInfo.StandardOutputEncoding = Encoding.UTF8
         StartInfo.WorkingDirectory = McVersionCurrent.PathIndie
         StartInfo.UseShellExecute = False
         StartInfo.RedirectStandardOutput = True

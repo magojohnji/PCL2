@@ -451,7 +451,7 @@ Refresh:
         End If
     End Sub
     Private Sub LabLauncherTheme8Copy_MouseRightButtonUp() Handles LabLauncherTheme8Copy.MouseRightButtonUp
-        OpenWebsite("https://afdian.net/a/LTCat")
+        OpenWebsite("https://afdian.com/a/LTCat")
     End Sub
     Private Sub LabLauncherTheme9Copy_MouseRightButtonUp() Handles LabLauncherTheme9Copy.MouseRightButtonUp
         PageOtherLeft.TryFeedback()
@@ -662,9 +662,9 @@ Refresh:
 
 #End Region
 
-    '公开预览版
+    '赞助
     Private Sub BtnLauncherDonate_Click(sender As Object, e As EventArgs) Handles BtnLauncherDonate.Click
-        OpenWebsite("https://afdian.net/a/LTCat")
+        OpenWebsite("https://afdian.com/a/LTCat")
     End Sub
 
     '滑动条
