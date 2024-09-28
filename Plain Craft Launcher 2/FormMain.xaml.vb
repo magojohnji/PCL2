@@ -1104,6 +1104,7 @@ Install:
         DownloadLiteLoader = 9
         DownloadMod = 11
         DownloadPack = 12
+        DownloadDataPack = 15
         DownloadResourcePack = 13
         SetupLaunch = 0
         SetupUI = 1
@@ -1140,6 +1141,12 @@ Install:
                         Return "Mod 下载 - " & Project.TranslatedName
                     Case CompType.ModPack
                         Return "整合包下载 - " & Project.TranslatedName
+                    Case CompType.DataPack
+                        If Project.IsMix Then
+                            Return "Mod / 数据包下载 - " & Project.TranslatedName
+                        Else
+                            Return "数据包下载 - " & Project.TranslatedName
+                        End If
                     Case CompType.ResourcePack
                         Return "资源包下载 - " & Project.TranslatedName
                     Case Else 'CompType.ShaderPack

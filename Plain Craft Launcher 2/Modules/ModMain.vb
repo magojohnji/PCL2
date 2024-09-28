@@ -406,6 +406,7 @@ EndHint:
     Public FrmDownloadQuilt As PageDownloadQuilt
     Public FrmDownloadMod As PageDownloadMod
     Public FrmDownloadPack As PageDownloadPack
+    Public FrmDownloadDataPack As PageDownloadDataPack
     Public FrmDownloadResourcePack As PageDownloadResourcePack
 
     '设置页面声明
