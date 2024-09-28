@@ -1157,8 +1157,6 @@ Install:
                         Return "资源包下载 - " & Project.TranslatedName
                     Case Else 'CompType.Shader
                         Return "光影包下载 - " & Project.TranslatedName
-                    Case Else 'CompType.ShaderPack
-                        Return "光影包下载 - " & Project.TranslatedName
                 End Select
             Case PageType.HelpDetail
                 Dim Entry As HelpEntry = Stack.Additional(0)

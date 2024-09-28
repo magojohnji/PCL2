@@ -481,26 +481,11 @@ VersionSearchFinish:
                     Return TrimedJson.StartsWithF("{") AndAlso TrimedJson.EndsWithF("}")
                 End Function
                 If _JsonText Is Nothing Then
-<<<<<<< HEAD
-                    If Not File.Exists(Path & Name & ".json") Then Throw New Exception($"未找到版本 JSON 文件：{Path}{Name}.json")
-=======
                     If Not File.Exists(Path & Name & ".json") Then Throw New Exception("未找到版本 Json 文件：" & Path & Name & ".json")
->>>>>>> quilt/quilt
                     _JsonText = ReadFile(Path & Name & ".json")
                     '如果 ReadFile 失败会返回空字符串；这可能是由于文件被临时占用，故延时后重试
                     If Not FastJsonCheck(_JsonText) Then
                         If RunInUi() Then
-<<<<<<< HEAD
-                            Log("[Minecraft] 版本 JSON 文件为空或有误，由于代码在主线程运行，将不再进行重试", LogLevel.Debug)
-                            GetJson(_JsonText) '触发异常
-                        Else
-                            Log("[Minecraft] 版本 JSON 文件为空或有误，将在 2s 后重试读取（" & Path & Name & ".json）", LogLevel.Debug)
-                            Thread.Sleep(2000)
-                            _JsonText = ReadFile(Path & Name & ".json")
-                            If Not FastJsonCheck(_JsonText) Then GetJson(_JsonText) '触发异常
-                        End If
-                    End If
-=======
                             Log("[Minecraft] 版本 Json 文件为空或读取失败，由于代码在主线程运行，将不再进行重试", LogLevel.Debug)
                             Throw New Exception("版本 Json 文件为空或读取失败")
                         Else
@@ -511,7 +496,6 @@ VersionSearchFinish:
                         End If
                     End If
                     If _JsonText.Length < 100 Then Throw New Exception("版本 Json 文件有误，内容为：" & _JsonText)
->>>>>>> quilt/quilt
                 End If
                 Return _JsonText
             End Get
@@ -583,11 +567,7 @@ Recheck:
                                 GoTo Recheck
                             End If
                         Catch ex As Exception
-<<<<<<< HEAD
-                            Log(ex, "合并版本依赖项 JSON 失败（" & If(InheritVersion, "null").ToString & "）")
-=======
                             Log(ex, "合并版本依赖项 Json 失败（" & If(InheritVersion, "null").ToString & "）")
->>>>>>> quilt/quilt
                         End Try
                     Catch ex As Exception
                         Throw New Exception("初始化版本 JSON 时失败（" & If(Name, "null") & "）", ex)
