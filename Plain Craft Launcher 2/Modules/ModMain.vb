@@ -406,6 +406,7 @@ EndHint:
     Public FrmDownloadQuilt As PageDownloadQuilt
     Public FrmDownloadMod As PageDownloadMod
     Public FrmDownloadPack As PageDownloadPack
+    Public FrmDownloadShader As PageDownloadShader
     Public FrmDownloadDataPack As PageDownloadDataPack
     Public FrmDownloadResourcePack As PageDownloadResourcePack
 

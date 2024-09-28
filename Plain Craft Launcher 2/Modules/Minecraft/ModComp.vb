@@ -17,6 +17,10 @@
         ''' 数据包。
         ''' </summary>
         DataPack = 4
+        ''' <summary>
+        ''' 光影包。
+        ''' </summary>
+        Shader = 3
     End Enum
     Public Enum CompModLoaderType
         'https://docs.curseforge.com/?http#tocS_ModLoaderType
@@ -287,10 +291,10 @@
                         Type = CompType.Mod
                     ElseIf Website.Contains("/modpacks/") Then
                         Type = CompType.ModPack
-                    ElseIf Website.Contains("/resourcepacks/") Then
+                    ElseIf Website.Contains("/texture-packs/") Then
                         Type = CompType.ResourcePack
-                    Else
-                        Type = CompType.DataPack
+                    Else 'Website.Contains("/shaders/")
+                        Type = CompType.Shader
                     End If
                     'Tags
                     Tags = New List(Of String)
@@ -338,6 +342,10 @@
                             Case 4480 : Tags.Add("基于地图")
                             Case 4481 : Tags.Add("轻量")
                             Case 4482 : Tags.Add("大型")
+                        '光影包
+                            Case 6553 : Tags.Add("写实")
+                            Case 6554 : Tags.Add("幻想")
+                            Case 6555 : Tags.Add("原版风")
                         '资源包
                             Case 5244 : Tags.Add("字体包")
                             Case 5193 : Tags.Add("数据包")
@@ -392,6 +400,7 @@
                         Case "mod" : Type = CompType.Mod
                         Case "modpack" : Type = CompType.ModPack
                         Case "resourcepack" : Type = CompType.ResourcePack
+                        Case "shader" : Type = CompType.Shader
                         Case "datapack" : Type = CompType.DataPack
                     End Select
                     If Data("categories").ToArray.Contains("datapack") Then 'Modrinth 上的数据包由于未知原因，返回的 project_type 为 mod，这里做兜底处理
@@ -435,6 +444,33 @@
                             Case "adventure" : Tags.Add("冒险")
                             Case "kitchen-sink" : Tags.Add("大杂烩")
                             Case "lightweight" : Tags.Add("轻量")
+                            '光影包
+                            Case "cartoon" : Tags.Add("卡通")
+                            Case "cursed" : Tags.Add("Cursed")
+                            Case "fantasy" : Tags.Add("幻想")
+                            Case "realistic" : Tags.Add("写实")
+                            Case "semi-realistic" : Tags.Add("半写实")
+                            Case "vanilla-like" : Tags.Add("原版风")
+
+                            Case "atmosphere" : Tags.Add("大气环境")
+                            Case "bloom" : Tags.Add("植被")
+                            Case "colored-lighting" : Tags.Add("光源着色")
+                            Case "foliage" : Tags.Add("树叶")
+                            Case "path-tracing" : Tags.Add("路径追踪")
+                            Case "pbr" : Tags.Add("PBR")
+                            Case "reflections" : Tags.Add("反射")
+                            Case "shadows" : Tags.Add("阴影")
+
+                            Case "potato" : Tags.Add("土豆画质")
+                            Case "low" : Tags.Add("低性能影响")
+                            Case "medium" : Tags.Add("中性能影响")
+                            Case "high" : Tags.Add("高性能影响")
+                            Case "screenshot" : Tags.Add("极致画质")
+
+                            Case "canvas" : Tags.Add("Canvas")
+                            Case "iris" : Tags.Add("Iris")
+                            Case "optifine" : Tags.Add("OptiFine")
+                            Case "vanilla" : Tags.Add("原版光影")
                             '数据包
                             Case "adventure" : Tags.Add("冒险")
                             Case "cursed" : Tags.Add("Cursed")
@@ -849,6 +885,8 @@ NoSubtitle:
                     Address += "&classId=6945"
                 Case CompType.ResourcePack
                     Address += "&classId=12"
+                Case CompType.Shader
+                    Address += "&classId=6552"
             End Select
             Address += "&categoryId=" & If(Tag = "", "0", Tag.Before("/"))
             If ModLoader <> CompModLoaderType.Any Then Address += "&modLoaderType=" & CType(ModLoader, Integer)

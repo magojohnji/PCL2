@@ -1104,8 +1104,9 @@ Install:
         DownloadLiteLoader = 9
         DownloadMod = 11
         DownloadPack = 12
-        DownloadDataPack = 15
         DownloadResourcePack = 13
+        DownloadShader = 14
+        DownloadDataPack = 15
         SetupLaunch = 0
         SetupUI = 1
         SetupSystem = 2
@@ -1149,6 +1150,8 @@ Install:
                         End If
                     Case CompType.ResourcePack
                         Return "资源包下载 - " & Project.TranslatedName
+                    Case Else 'CompType.Shader
+                        Return "光影包下载 - " & Project.TranslatedName
                     Case Else 'CompType.ShaderPack
                         Return "光影包下载 - " & Project.TranslatedName
                 End Select
